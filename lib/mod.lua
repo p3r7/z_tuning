@@ -8,7 +8,8 @@ local tuning_files = require 'z_tuning/lib/tuning_files'
 local tuning_state = {
    root_note = 69,
    root_freq = 440.0,
-   selected_tuning = 'ji_ptolemaic'
+   selected_tuning = 'ji_ptolemaic',
+   midi_bend_range = 2,
 }
 
 local tunings = {}
@@ -42,7 +43,7 @@ local setup_tunings = function()
    end
 end
 
--- set the root note number, without changing the concert pitch (w/r/t a=440) 
+-- set the root note number, without changing the concert pitch (w/r/t a=440)
 -- in other words, update the root frequency such that the tuning would not change under 12tet
 local set_root_note_move_freq = function(num)
    local interval = num - tuning_state.root_note
@@ -71,10 +72,34 @@ local apply_mod = function()
    musicutil.interval_to_ratio = interval_to_ratio
 
    -- FIXME? this is a tricky one...
-   -- (in fact i'm going to say, impossible in general 
+   -- (in fact i'm going to say, impossible in general
    -- since int->ratio not be invertible/continuous/monotonic
    -- musicutil.ratio_to_interval = ...
 
+   local og_midi_send = midi.send
+   midi.send = function(self, data)
+     local msg
+     if data.type == nil then
+       msg = midi.to_msg(data)
+     else
+       msg = data
+     end
+     if msg.type == "note_on" then
+       -- print("-------------")
+       -- print("NOTE ON!")
+       -- tab.print(tuning_state)
+       local tuned_note = tunings[tuning_state.selected_tuning].midi_note(msg.note,
+                                                                          tuning_state.midi_bend_range,
+                                                                          tuning_state.root_note,
+                                                                          tuning_state.root_freq)
+       tab.print(tuned_note)
+       msg.note = tuned_note[1]
+       og_midi_send(self, msg)
+       og_midi_send(self, {type="pitchbend", val=tuned_note[2], ch=msg.ch or 1})
+     else
+       og_midi_send(self, data)
+     end
+   end
 end
 
 ----------------------
@@ -85,11 +110,11 @@ local save_tuning_state = function()
    local f = io.open(state_path, 'w')
    io.output(f)
    io.write('return { \n')
-   local keys = {'selected_tuning', 'root_note', 'root_freq'}
+   local keys = {'selected_tuning', 'root_note', 'root_freq', 'midi_bend_range'}
    for _, k in pairs(keys) do
-      local v = tuning_state[k]
-      local vstr = v
-      if type(v) == 'string' then
+     local v = tuning_state[k]
+     local vstr = v
+     if type(v) == 'string' then
          vstr = "'" .. v .. "'"
       end
       io.write('  ' .. k .. ' = ' .. vstr .. ',\n')
@@ -130,13 +155,14 @@ mod.hook.register("system_pre_shutdown", "save tuning mod settings", save_tuning
 local edit_select = {
    [1] = 'tuning',
    [2] = 'note',
-   [3] = 'freq'
+   [3] = 'freq',
+   [4] = 'midi_bend_range',
 }
-local num_edit_select = 3
+local num_edit_select = 4
 
 local m = {
-   edit_select = 1,
-   freq_mode_keep = false
+  edit_select = 1,
+  freq_mode_keep = false
 }
 
 m.key = function(n, z)
@@ -182,6 +208,12 @@ m_incdec = {
    [3] = function(d)
       tuning_state.root_freq = math.floor((tuning_state.root_freq + (d * 0.0625)) * 16) * 0.0625
       tuning_state.root_freq = util.clamp(tuning_state.root_freq, 1, 10000)
+   end,
+   -- edit midi bend range
+   [4] = function(d)
+     local sign = 1
+     if d < 0 then sign = -1 end
+     tuning_state.midi_bend_range = util.clamp(tuning_state.midi_bend_range + (sign * 2), 2, 4)
    end
 }
 
@@ -218,6 +250,14 @@ m.redraw = function()
       screen.level(4)
    end
    screen.text("root freq: " .. tuning_state.root_freq)
+
+   screen.move(0, 40)
+   if edit_select[m.edit_select] == 'midi_bend_range' then
+     screen.level(15)
+   else
+     screen.level(4)
+   end
+   screen.text("midi bend range: " .. tuning_state.midi_bend_range)
 
    --- TODO:
    -- show some more basic data on selected tuning
