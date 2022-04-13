@@ -85,9 +85,6 @@ local apply_mod = function()
        msg = data
      end
      if msg.type == "note_on" then
-       -- print("-------------")
-       -- print("NOTE ON!")
-       -- tab.print(tuning_state)
        local tuned_note = tunings[tuning_state.selected_tuning].midi_note(msg.note,
                                                                           tuning_state.midi_bend_range,
                                                                           tuning_state.root_note,
