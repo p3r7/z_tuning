@@ -25,6 +25,11 @@ local note_freq_from_table = function(midi, rats, root_note, root_hz, oct)
    end
 end
 
+-- helper
+local function log2(x)
+  return math.log(x) / 0.69314718055995 -- math.log(2)
+end
+
 local midi_note_from_table = function(midi, bend_range, rats, root_note, root_hz, oct)
   local hz_12tet = root_hz * (2 ^ ((midi - root_note) / 12))
 
